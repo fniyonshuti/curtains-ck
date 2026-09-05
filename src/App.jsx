@@ -124,9 +124,7 @@ function App() {
   const [ratingSubmitting, setRatingSubmitting] = useState(null);
   const [ratingMessage, setRatingMessage] = useState("");
   const [ratingModalProduct, setRatingModalProduct] = useState(null);
-  const [ratingModalName, setRatingModalName] = useState("");
   const [ratingModalValue, setRatingModalValue] = useState(0);
-  const [ratingModalFeedback, setRatingModalFeedback] = useState("");
   const [reviewerId] = useState(() => {
     const savedReviewerId = loadSavedState("curtain-reviewer-id", null);
 
@@ -348,37 +346,17 @@ function App() {
     setRatingSubmitting(productId);
     setRatingMessage("");
 
-    let { error: saveError } = await supabase.from("product_ratings").upsert(
-      {
-        product_id: productId,
-        reviewer_id: reviewerId,
-        reviewer_name: reviewerName.trim(),
-        rating,
-        feedback: feedbackText.trim(),
-      },
+    const { error: saveError } = await supabase.from("product_ratings").upsert(
+      { product_id: productId, reviewer_id: reviewerId, rating },
       { onConflict: "product_id,reviewer_id" },
     );
 
-    if (saveError && isFeedbackColumnError(saveError)) {
-      const legacySave = await supabase
-        .from("product_ratings")
-        .upsert(
-          { product_id: productId, reviewer_id: reviewerId, rating },
-          { onConflict: "product_id,reviewer_id" },
-        );
-      saveError = legacySave.error;
-
-      if (!saveError) {
-        setRatingMessage(
-          "Rating saved. Run the updated product-ratings.sql to enable written feedback.",
-        );
-      }
-    }
-
     if (saveError) {
-      setRatingMessage(
-        `Could not save your rating: ${saveError.message}. Run the product ratings SQL setup in README.md.`,
-      );
+      if (import.meta.env.DEV) {
+        console.error("Could not save product rating:", saveError.message);
+      }
+
+      setRatingMessage("Could not save your rating. Please try again.");
       setRatingSubmitting(null);
       return false;
     }
@@ -749,12 +727,9 @@ function App() {
                     <strong>{formatCurrency(product.price)}</strong>
                     <button
                       type="button"
-                      className="rate-product-btn"
                       onClick={() => {
                         setRatingModalProduct(product);
-                        setRatingModalName("");
                         setRatingModalValue(userRatings[product.id] || 0);
-                        setRatingModalFeedback("");
                       }}
                     >
                       Rate product
@@ -1232,11 +1207,17 @@ function App() {
             aria-labelledby="rating-modal-title"
             onSubmit={async (event) => {
               event.preventDefault();
+
+              if (!ratingModalValue) {
+                setRatingMessage("Please select a star rating before submitting.");
+                return;
+              }
+
               const saved = await handleRateProduct(
                 ratingModalProduct.id,
                 ratingModalValue,
-                ratingModalFeedback,
-                ratingModalName,
+                "",
+                "",
               );
 
               if (saved) {
@@ -1262,18 +1243,6 @@ function App() {
             {ratingMessage && (
               <p className="rating-modal-message">{ratingMessage}</p>
             )}
-
-            <label className="modal-field">
-              <span>Your name</span>
-              <input
-                type="text"
-                value={ratingModalName}
-                maxLength="80"
-                placeholder="Enter your name"
-                onChange={(event) => setRatingModalName(event.target.value)}
-                required
-              />
-            </label>
 
             <div className="modal-field">
               <span>Your rating</span>
@@ -1302,18 +1271,6 @@ function App() {
               </div>
             </div>
 
-            <label className="modal-field">
-              <span>Your feedback</span>
-              <textarea
-                rows="4"
-                maxLength="240"
-                value={ratingModalFeedback}
-                placeholder="Tell us about your experience"
-                onChange={(event) => setRatingModalFeedback(event.target.value)}
-                required
-              />
-            </label>
-
             <div className="rating-modal-actions">
               <button
                 type="button"
@@ -1325,7 +1282,10 @@ function App() {
               <button
                 type="submit"
                 className="primary-btn"
-                disabled={ratingSubmitting === ratingModalProduct.id}
+                disabled={
+                  !ratingModalValue ||
+                  ratingSubmitting === ratingModalProduct.id
+                }
               >
                 {ratingSubmitting === ratingModalProduct.id
                   ? "Saving..."

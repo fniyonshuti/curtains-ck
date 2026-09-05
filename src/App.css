@@ -1181,16 +1181,6 @@ button {
   color: #fff;
 }
 
-.rate-product-btn {
-  background: #f5f1eb !important;
-  color: #55452d !important;
-  border: 1px solid rgba(85, 69, 45, 0.14);
-}
-
-.rate-product-btn:hover {
-  background: #ebe3d8 !important;
-}
-
 .rating-modal-backdrop {
   position: fixed;
   inset: 0;
