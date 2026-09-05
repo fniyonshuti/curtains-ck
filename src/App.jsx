@@ -275,7 +275,7 @@ function App() {
     (sum, item) => sum + item.price * item.quantity,
     0,
   );
-  const delivery = subtotal > 0 ? 18 : 0;
+  const delivery = subtotal > 0 ? 0 : 0;
   const total = subtotal + delivery;
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
