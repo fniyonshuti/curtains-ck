@@ -1,9 +1,19 @@
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap");
+
 :root {
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "DM Sans", "Trebuchet MS", Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: #111827;
   background: #f5f2ee;
+  --font-display: "Cormorant Garamond", Georgia, serif;
+  --font-ui: "DM Sans", "Trebuchet MS", Arial, sans-serif;
+  --ink: #18221f;
+  --muted: #66706b;
+  --paper: #f7f5f0;
+  --forest: #25332f;
+  --clay: #b9824d;
+  --line: rgba(24, 34, 31, 0.12);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -23,8 +33,19 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top, rgba(214, 191, 169, 0.24), transparent 32%),
-    #f5f2ee;
+    radial-gradient(
+      circle at 8% 0%,
+      rgba(213, 181, 148, 0.18),
+      transparent 26%
+    ),
+    linear-gradient(135deg, #faf8f4 0%, #eef1ed 100%);
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: var(--font-ui);
 }
 
 img {

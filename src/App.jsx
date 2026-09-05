@@ -1,74 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
-
-const DEFAULT_PRODUCTS = [
-  {
-    id: 1,
-    name: "Luxury Beige Textured Drapes",
-    category: "Living Room",
-    price: 119.99,
-    rating: 4.9,
-    image:
-      "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=80",
-    description:
-      "Warm beige drapes with a soft woven texture for light-filtering elegance.",
-  },
-  {
-    id: 2,
-    name: "Modern Grey Blackout Curtains",
-    category: "Bedroom",
-    price: 94.99,
-    rating: 4.8,
-    image:
-      "https://images.unsplash.com/photo-1484154218962-a197022b5858?auto=format&fit=crop&w=900&q=80",
-    description:
-      "Thermal blackout panels that keep your room calm, dark, and cozy.",
-  },
-  {
-    id: 3,
-    name: "Classic White Sheer Curtains",
-    category: "Dining Room",
-    price: 69.99,
-    rating: 4.7,
-    image:
-      "https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=900&q=80",
-    description:
-      "Airy sheer fabric that softens daylight while keeping a clean aesthetic.",
-  },
-  {
-    id: 4,
-    name: "Velvet Luxury Curtains",
-    category: "Statement",
-    price: 139.99,
-    rating: 5.0,
-    image:
-      "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=80",
-    description:
-      "Premium velvet finish for a dramatic and elegant, hotel-style look.",
-  },
-  {
-    id: 5,
-    name: "Natural Linen Blend Panels",
-    category: "Minimal",
-    price: 109.99,
-    rating: 4.8,
-    image:
-      "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=900&q=80",
-    description:
-      "Crafted from linen blend for a relaxed, organic, contemporary home feel.",
-  },
-  {
-    id: 6,
-    name: "Scandinavian Minimalist Curtains",
-    category: "Minimal",
-    price: 84.99,
-    rating: 4.7,
-    image:
-      "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=80",
-    description:
-      "Soft neutral tones and lightweight layering for effortlessly refined spaces.",
-  },
-];
+import { isSupabaseConfigured, supabase } from "./supabase";
 
 const ADMIN_CREDENTIALS = {
   username: "admin",
@@ -79,7 +11,7 @@ const EMPTY_PRODUCT_FORM = {
   name: "",
   category: "Living Room",
   price: "",
-  image: "",
+  imageFile: null,
   description: "",
 };
 
@@ -100,6 +32,58 @@ const formatCurrency = (value) =>
     currency: "USD",
   }).format(value);
 
+const getRatingStars = (rating) =>
+  Array.from({ length: 5 }, (_, index) =>
+    index < Math.round(rating) ? "★" : "☆",
+  ).join("");
+
+const formatFeedbackDate = (date) =>
+  new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(date));
+
+const isFeedbackColumnError = (error) =>
+  ["feedback", "reviewer_name"].some((column) =>
+    error?.message?.toLowerCase().includes(column),
+  );
+
+const applyRatingAverages = (productList, ratingRows) => {
+  const ratingTotals = ratingRows.reduce((totals, row) => {
+    const productRatings = totals[row.product_id] || { total: 0, count: 0 };
+    productRatings.total += row.rating;
+    productRatings.count += 1;
+    totals[row.product_id] = productRatings;
+    return totals;
+  }, {});
+
+  return productList.map((product) => {
+    const productRatings = ratingTotals[product.id];
+
+    return {
+      ...product,
+      rating: productRatings
+        ? Number((productRatings.total / productRatings.count).toFixed(1))
+        : product.rating,
+      ratingCount: productRatings?.count || 0,
+    };
+  });
+};
+
+const getFeedbackRows = (ratingRows, productList) =>
+  ratingRows
+    .filter((row) => row.feedback?.trim())
+    .map((row) => ({
+      ...row,
+      productName:
+        productList.find((product) => product.id === row.product_id)?.name ||
+        "Curtain product",
+    }))
+    .sort((firstRow, secondRow) =>
+      secondRow.created_at.localeCompare(firstRow.created_at),
+    );
+
 const loadSavedState = (key, fallback) => {
   if (typeof window === "undefined") {
     return fallback;
@@ -113,10 +97,17 @@ const loadSavedState = (key, fallback) => {
   }
 };
 
+const getPageFromPath = () => {
+  if (typeof window === "undefined") {
+    return "home";
+  }
+
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  return path === "/cart" || path === "/admin" ? path.slice(1) : "home";
+};
+
 function App() {
-  const [products, setProducts] = useState(() =>
-    loadSavedState("curtain-products", DEFAULT_PRODUCTS),
-  );
+  const [products, setProducts] = useState([]);
   const [cart, setCart] = useState(() => loadSavedState("curtain-cart", []));
   const [orders, setOrders] = useState(() =>
     loadSavedState("curtain-orders", []),
@@ -127,11 +118,139 @@ function App() {
   const [productForm, setProductForm] = useState(EMPTY_PRODUCT_FORM);
   const [checkoutForm, setCheckoutForm] = useState(EMPTY_CHECKOUT_FORM);
   const [checkoutMessage, setCheckoutMessage] = useState("");
-  const [currentPage, setCurrentPage] = useState("home");
+  const [currentPage, setCurrentPage] = useState(getPageFromPath);
+  const [userRatings, setUserRatings] = useState({});
+  const [feedbackRows, setFeedbackRows] = useState([]);
+  const [ratingSubmitting, setRatingSubmitting] = useState(null);
+  const [ratingMessage, setRatingMessage] = useState("");
+  const [ratingModalProduct, setRatingModalProduct] = useState(null);
+  const [ratingModalName, setRatingModalName] = useState("");
+  const [ratingModalValue, setRatingModalValue] = useState(0);
+  const [ratingModalFeedback, setRatingModalFeedback] = useState("");
+  const [reviewerId] = useState(() => {
+    const savedReviewerId = loadSavedState("curtain-reviewer-id", null);
+
+    if (savedReviewerId) {
+      return savedReviewerId;
+    }
+
+    const newReviewerId =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `reviewer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        "curtain-reviewer-id",
+        JSON.stringify(newReviewerId),
+      );
+    }
+
+    return newReviewerId;
+  });
+  const [catalogFilters, setCatalogFilters] = useState({
+    search: "",
+    category: "All",
+    sort: "featured",
+  });
+
+  const navigateTo = (page, hash = "") => {
+    const path = page === "home" ? "/" : `/${page}`;
+    window.history.pushState({}, "", `${path}${hash}`);
+    setCurrentPage(page);
+
+    if (hash) {
+      window.requestAnimationFrame(() => {
+        document.querySelector(hash)?.scrollIntoView({ behavior: "smooth" });
+      });
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   useEffect(() => {
-    window.localStorage.setItem("curtain-products", JSON.stringify(products));
-  }, [products]);
+    const handlePopState = () => setCurrentPage(getPageFromPath());
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      return;
+    }
+
+    const loadProducts = async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, name, category, price, rating, image_url, description")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Could not load products from Supabase:", error);
+        return;
+      }
+
+      const productsWithImages = data.map((product) => ({
+        ...product,
+        image: product.image_url,
+      }));
+
+      const { data: ratingRows, error: ratingsError } = await supabase
+        .from("product_ratings")
+        .select(
+          "product_id, rating, reviewer_id, reviewer_name, feedback, created_at",
+        );
+
+      if (ratingsError) {
+        if (isFeedbackColumnError(ratingsError)) {
+          const { data: legacyRatingRows, error: legacyRatingsError } =
+            await supabase
+              .from("product_ratings")
+              .select("product_id, rating, reviewer_id, created_at");
+
+          if (!legacyRatingsError) {
+            const safeLegacyRows = legacyRatingRows || [];
+            setProducts(
+              applyRatingAverages(productsWithImages, safeLegacyRows),
+            );
+            setUserRatings(
+              safeLegacyRows.reduce((ratings, row) => {
+                if (row.reviewer_id === reviewerId) {
+                  ratings[row.product_id] = row.rating;
+                }
+                return ratings;
+              }, {}),
+            );
+            setFeedbackRows([]);
+            return;
+          }
+        }
+
+        console.warn(
+          "Product ratings are unavailable. Run the product_ratings SQL setup:",
+          ratingsError.message,
+        );
+        setProducts(productsWithImages);
+        return;
+      }
+
+      const safeRatingRows = ratingRows || [];
+
+      setProducts(applyRatingAverages(productsWithImages, safeRatingRows));
+      setFeedbackRows(getFeedbackRows(safeRatingRows, productsWithImages));
+      setUserRatings(
+        safeRatingRows.reduce((ratings, row) => {
+          if (row.reviewer_id === reviewerId) {
+            ratings[row.product_id] = row.rating;
+          }
+          return ratings;
+        }, {}),
+      );
+    };
+
+    loadProducts();
+  }, [reviewerId]);
 
   useEffect(() => {
     window.localStorage.setItem("curtain-cart", JSON.stringify(cart));
@@ -160,6 +279,191 @@ function App() {
   const total = subtotal + delivery;
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
+  const catalogCategories = useMemo(
+    () => ["All", ...new Set(products.map((product) => product.category))],
+    [products],
+  );
+
+  const filteredProducts = useMemo(() => {
+    const searchTerm = catalogFilters.search.trim().toLowerCase();
+    const visibleProducts = products.filter((product) => {
+      const matchesCategory =
+        catalogFilters.category === "All" ||
+        product.category === catalogFilters.category;
+      const matchesSearch =
+        !searchTerm ||
+        [product.name, product.category, product.description].some((value) =>
+          value.toLowerCase().includes(searchTerm),
+        );
+
+      return matchesCategory && matchesSearch;
+    });
+
+    return [...visibleProducts].sort((firstProduct, secondProduct) => {
+      if (catalogFilters.sort === "price-low") {
+        return firstProduct.price - secondProduct.price;
+      }
+
+      if (catalogFilters.sort === "price-high") {
+        return secondProduct.price - firstProduct.price;
+      }
+
+      if (catalogFilters.sort === "rating") {
+        return secondProduct.rating - firstProduct.rating;
+      }
+
+      return 0;
+    });
+  }, [catalogFilters, products]);
+
+  const hasActiveFilters =
+    catalogFilters.search ||
+    catalogFilters.category !== "All" ||
+    catalogFilters.sort !== "featured";
+
+  const updateCatalogFilter = (name, value) => {
+    setCatalogFilters((previousFilters) => ({
+      ...previousFilters,
+      [name]: value,
+    }));
+  };
+
+  const handleRateProduct = async (
+    productId,
+    ratingValue,
+    feedbackText,
+    reviewerName,
+  ) => {
+    const rating = Number(ratingValue);
+
+    if (!rating || !isSupabaseConfigured) {
+      setRatingMessage(
+        "Ratings need a connected Supabase project before they can be saved.",
+      );
+      return false;
+    }
+
+    setRatingSubmitting(productId);
+    setRatingMessage("");
+
+    let { error: saveError } = await supabase.from("product_ratings").upsert(
+      {
+        product_id: productId,
+        reviewer_id: reviewerId,
+        reviewer_name: reviewerName.trim(),
+        rating,
+        feedback: feedbackText.trim(),
+      },
+      { onConflict: "product_id,reviewer_id" },
+    );
+
+    if (saveError && isFeedbackColumnError(saveError)) {
+      const legacySave = await supabase
+        .from("product_ratings")
+        .upsert(
+          { product_id: productId, reviewer_id: reviewerId, rating },
+          { onConflict: "product_id,reviewer_id" },
+        );
+      saveError = legacySave.error;
+
+      if (!saveError) {
+        setRatingMessage(
+          "Rating saved. Run the updated product-ratings.sql to enable written feedback.",
+        );
+      }
+    }
+
+    if (saveError) {
+      setRatingMessage(
+        `Could not save your rating: ${saveError.message}. Run the product ratings SQL setup in README.md.`,
+      );
+      setRatingSubmitting(null);
+      return false;
+    }
+
+    const { data: ratingRows, error: ratingsError } = await supabase
+      .from("product_ratings")
+      .select(
+        "product_id, rating, reviewer_id, reviewer_name, feedback, created_at",
+      );
+
+    if (ratingsError) {
+      const { data: legacyRatingRows } = await supabase
+        .from("product_ratings")
+        .select("product_id, rating, reviewer_id, created_at");
+
+      if (legacyRatingRows) {
+        setProducts((previousProducts) =>
+          applyRatingAverages(previousProducts, legacyRatingRows),
+        );
+        if (feedbackText.trim()) {
+          setFeedbackRows((previousRows) => [
+            {
+              id: `pending-${productId}-${Date.now()}`,
+              product_id: productId,
+              reviewer_id: reviewerId,
+              reviewer_name: reviewerName.trim(),
+              rating,
+              feedback: feedbackText.trim(),
+              created_at: new Date().toISOString(),
+              productName:
+                products.find((product) => product.id === productId)?.name ||
+                "Curtain product",
+            },
+            ...previousRows,
+          ]);
+        }
+        setRatingSubmitting(null);
+        return true;
+      }
+
+      setRatingMessage(
+        "Your rating was saved, but the average is still loading.",
+      );
+      setRatingSubmitting(null);
+      return false;
+    }
+
+    setProducts((previousProducts) =>
+      applyRatingAverages(previousProducts, ratingRows),
+    );
+    setFeedbackRows(() => {
+      const nextProducts = applyRatingAverages(products, ratingRows);
+      const nextRows = getFeedbackRows(ratingRows, nextProducts);
+      const submittedFeedback = feedbackText.trim();
+
+      if (!submittedFeedback) {
+        return nextRows;
+      }
+
+      const submittedRow = {
+        id: `current-${productId}`,
+        product_id: productId,
+        reviewer_id: reviewerId,
+        reviewer_name: reviewerName.trim(),
+        rating,
+        feedback: submittedFeedback,
+        created_at: new Date().toISOString(),
+        productName:
+          products.find((product) => product.id === productId)?.name ||
+          "Curtain product",
+      };
+      const withoutCurrentFeedback = nextRows.filter(
+        (row) =>
+          !(row.product_id === productId && row.reviewer_id === reviewerId),
+      );
+
+      return [submittedRow, ...withoutCurrentFeedback];
+    });
+    setUserRatings((previousRatings) => ({
+      ...previousRatings,
+      [productId]: rating,
+    }));
+    setRatingMessage("");
+    setRatingSubmitting(null);
+    return true;
+  };
+
   const addToCart = (product) => {
     setCart((prevCart) => {
       const existing = prevCart.find((item) => item.id === product.id);
@@ -174,7 +478,7 @@ function App() {
 
       return [...prevCart, { id: product.id, quantity: 1 }];
     });
-    setCurrentPage("cart");
+    navigateTo("cart");
   };
 
   const updateQuantity = (productId, change) => {
@@ -209,7 +513,7 @@ function App() {
     alert("Invalid admin credentials. Please use admin / admin123");
   };
 
-  const handleProductSubmit = (event) => {
+  const handleProductSubmit = async (event) => {
     event.preventDefault();
 
     const price = Number(productForm.price);
@@ -217,24 +521,57 @@ function App() {
     if (
       !productForm.name ||
       !productForm.description ||
-      !productForm.image ||
+      !productForm.imageFile ||
       !price
     ) {
       alert("Please complete all product fields before saving.");
       return;
     }
 
+    if (!isSupabaseConfigured) {
+      alert("Add your Supabase values to .env.local before uploading images.");
+      return;
+    }
+
+    const file = productForm.imageFile;
+    const filePath = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+    const { error: uploadError } = await supabase.storage
+      .from("curtain-images")
+      .upload(filePath, file);
+
+    if (uploadError) {
+      alert(`Image upload failed: ${uploadError.message}`);
+      return;
+    }
+
+    const { data: imageData } = supabase.storage
+      .from("curtain-images")
+      .getPublicUrl(filePath);
+
     const newProduct = {
-      id: Date.now(),
       name: productForm.name,
       category: productForm.category,
       price,
       rating: 5.0,
-      image: productForm.image,
+      image_url: imageData.publicUrl,
       description: productForm.description,
     };
 
-    setProducts((prevProducts) => [newProduct, ...prevProducts]);
+    const { data: savedProduct, error: productError } = await supabase
+      .from("products")
+      .insert(newProduct)
+      .select("id, name, category, price, rating, image_url, description")
+      .single();
+
+    if (productError) {
+      alert(`Product save failed: ${productError.message}`);
+      return;
+    }
+
+    setProducts((prevProducts) => [
+      { ...savedProduct, image: savedProduct.image_url },
+      ...prevProducts,
+    ]);
     setProductForm(EMPTY_PRODUCT_FORM);
     setCheckoutMessage("A new curtain product has been added successfully.");
   };
@@ -265,92 +602,53 @@ function App() {
     setCart([]);
     setCheckoutForm(EMPTY_CHECKOUT_FORM);
     setCheckoutMessage(`Payment successful! Order ${orderId} has been placed.`);
-    setCurrentPage("home");
+    navigateTo("home");
   };
 
   const renderHomePage = () => (
     <main className="content-area">
       <section className="hero-section">
         <div className="hero-copy">
-          <span className="eyebrow">Luxury window styling</span>
-          <h1>Beautiful curtains for calm, elevated living.</h1>
+          <h1>Thoughtful spaces, made for living and working.</h1>
           <p>
-            Discover premium fabrics, blackout insulation, and designer-inspired
-            styles made to create a softer and more elegant home.
+            C.K Business Ltd brings together furniture, interior design,
+            curtains, sofas, and practical office services for homes,
+            workplaces, schools, and hospitals.
           </p>
           <div className="hero-actions">
             <button
               type="button"
               className="primary-btn"
-              onClick={() => setCurrentPage("home")}
+              onClick={() => navigateTo("home", "#services")}
             >
-              Shop collection
-            </button>
-            <button type="button" className="secondary-btn light">
-              Book design consult
+              Explore our services
             </button>
           </div>
-          <div className="hero-stats">
-            <div>
-              <strong>25k+</strong>
-              <span>happy homes</span>
-            </div>
-            <div>
-              <strong>4.9/5</strong>
-              <span>customer rating</span>
-            </div>
-            <div>
-              <strong>48h</strong>
-              <span>dispatch time</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="hero-visual">
-          <img
-            src="https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80"
-            alt="Luxury bedroom with curtains"
-          />
         </div>
       </section>
 
-      <section id="benefits" className="benefits-row">
-        <div>
-          <span>Free shipping</span>
-          <strong>on orders over $150</strong>
-        </div>
-        <div>
-          <span>Insulated</span>
-          <strong>thermal & blackout</strong>
-        </div>
-        <div>
-          <span>Easy returns</span>
-          <strong>30-day guarantee</strong>
-        </div>
-      </section>
-
-      <section className="room-showcase">
+      <section id="services" className="room-showcase">
         <div className="section-heading small">
-          <span className="eyebrow">Shop by room</span>
-          <h2>Designed for every corner of your home</h2>
+          <span className="eyebrow">What we do</span>
+          <h2>Practical expertise for better spaces</h2>
         </div>
 
         <div className="category-strip">
           <article className="category-card">
-            <span>Living room</span>
-            <strong>Soft layered elegance</strong>
+            <span>Furniture</span>
+            <strong>Wooden and metal items for every setting</strong>
           </article>
           <article className="category-card">
-            <span>Bedroom</span>
-            <strong>Night-time privacy</strong>
+            <span>Interior design</span>
+            <strong>Ceilings, doors, windows, carpets and decor</strong>
           </article>
           <article className="category-card">
-            <span>Dining room</span>
-            <strong>Light & airy styling</strong>
+            <span>Curtains & sofas</span>
+            <strong>Imported, tailored, supplied and installed</strong>
           </article>
           <article className="category-card">
-            <span>Studio</span>
-            <strong>Minimal modern finish</strong>
+            <span>Office services</span>
+            <strong>Repairs, partitions, soundproofing and relocations</strong>
           </article>
         </div>
       </section>
@@ -359,72 +657,162 @@ function App() {
         <div className="section-header">
           <div>
             <span className="eyebrow">Featured styles</span>
-            <h2>Curated curtains for every room</h2>
+            <h2>products</h2>
           </div>
-          <span className="section-pill">{products.length} products</span>
+          <span className="section-pill">
+            {filteredProducts.length} of {products.length} products
+          </span>
         </div>
 
-        <div className="products-grid">
-          {products.map((product) => (
-            <article key={product.id} className="product-card">
-              <img src={product.image} alt={product.name} />
-              <div className="product-body">
-                <div className="product-topline">
-                  <span>{product.category}</span>
-                  <span>★ {product.rating}</span>
-                </div>
-                <h3>{product.name}</h3>
-                <p>{product.description}</p>
-                <div className="product-footer">
-                  <strong>{formatCurrency(product.price)}</strong>
-                  <button type="button" onClick={() => addToCart(product)}>
-                    Add to cart
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
+        <div className="catalog-toolbar" aria-label="Filter curtain styles">
+          <label className="catalog-search">
+            <span className="sr-only">Search curtain styles</span>
+            <input
+              type="search"
+              placeholder="Search styles"
+              value={catalogFilters.search}
+              onChange={(event) =>
+                updateCatalogFilter("search", event.target.value)
+              }
+            />
+          </label>
+
+          <label className="catalog-select">
+            <span className="sr-only">Filter by room</span>
+            <select
+              value={catalogFilters.category}
+              onChange={(event) =>
+                updateCatalogFilter("category", event.target.value)
+              }
+            >
+              {catalogCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category === "All" ? "All rooms" : category}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="catalog-select">
+            <span className="sr-only">Sort curtain styles</span>
+            <select
+              value={catalogFilters.sort}
+              onChange={(event) =>
+                updateCatalogFilter("sort", event.target.value)
+              }
+            >
+              <option value="featured">Sort: Featured</option>
+              <option value="price-low">Price: Low to high</option>
+              <option value="price-high">Price: High to low</option>
+              <option value="rating">Rating: Highest first</option>
+            </select>
+          </label>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              className="clear-filters"
+              onClick={() =>
+                setCatalogFilters({
+                  search: "",
+                  category: "All",
+                  sort: "featured",
+                })
+              }
+            >
+              Clear filters
+            </button>
+          )}
         </div>
+
+        {ratingMessage && <p className="rating-message">{ratingMessage}</p>}
+
+        {filteredProducts.length > 0 ? (
+          <div className="products-grid">
+            {filteredProducts.map((product) => (
+              <article key={product.id} className="product-card">
+                <img src={product.image} alt={product.name} />
+                <div className="product-body">
+                  <div className="product-topline">
+                    <span>{product.category}</span>
+                    <span className="rating-summary">
+                      {product.ratingCount > 0
+                        ? `${getRatingStars(product.rating)} ${product.rating} · ${product.ratingCount} review${product.ratingCount === 1 ? "" : "s"}`
+                        : "No reviews yet"}
+                    </span>
+                  </div>
+                  <h3>{product.name}</h3>
+                  <p>{product.description}</p>
+                  <div className="product-footer">
+                    <strong>{formatCurrency(product.price)}</strong>
+                    <button
+                      type="button"
+                      className="rate-product-btn"
+                      onClick={() => {
+                        setRatingModalProduct(product);
+                        setRatingModalName("");
+                        setRatingModalValue(userRatings[product.id] || 0);
+                        setRatingModalFeedback("");
+                      }}
+                    >
+                      Rate product
+                    </button>
+                    <button type="button" onClick={() => addToCart(product)}>
+                      Add to cart
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="catalog-empty-state">
+            <strong>No curtain styles found</strong>
+            <p>
+              Try another search or reset the filters to view the collection.
+            </p>
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() =>
+                setCatalogFilters({
+                  search: "",
+                  category: "All",
+                  sort: "featured",
+                })
+              }
+            >
+              View all styles
+            </button>
+          </div>
+        )}
       </section>
 
-      <section id="reviews" className="reviews-section">
+      <section id="reviews" className="reviews-section rating-section">
         <div className="section-heading small">
-          <span className="eyebrow">Customer love</span>
-          <h2>Homes people are proudly styling</h2>
+          <span className="eyebrow">Customer ratings</span>
+          <h2>Spaces shaped by real customer feedback</h2>
         </div>
 
-        <div className="review-grid">
-          <article className="review-card">
-            <p>
-              “The quality feels premium and the blackout lining works
-              perfectly. My bedroom feels calmer and more luxurious.”
-            </p>
-            <div>
-              <strong>Amelia K.</strong>
-              <span>Verified buyer</span>
-            </div>
-          </article>
-          <article className="review-card">
-            <p>
-              “Delivery was quick, the design looks custom-made, and the fabric
-              is beautifully textured.”
-            </p>
-            <div>
-              <strong>Daniel R.</strong>
-              <span>Verified buyer</span>
-            </div>
-          </article>
-          <article className="review-card">
-            <p>
-              “Very easy to style and the room instantly feels elevated. I would
-              absolutely order again.”
-            </p>
-            <div>
-              <strong>Sophia M.</strong>
-              <span>Verified buyer</span>
-            </div>
-          </article>
-        </div>
+        {feedbackRows.length > 0 && (
+          <div className="feedback-grid">
+            {feedbackRows.slice(0, 6).map((feedback) => (
+              <article className="feedback-card" key={feedback.id}>
+                <div className="feedback-card-topline">
+                  <span>{getRatingStars(feedback.rating)}</span>
+                  <time dateTime={feedback.created_at}>
+                    {formatFeedbackDate(feedback.created_at)}
+                  </time>
+                </div>
+                <p>“{feedback.feedback}”</p>
+                <strong>
+                  {feedback.reviewer_name || "Verified customer"} ·{" "}
+                  {feedback.productName}
+                </strong>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
     </main>
   );
@@ -439,7 +827,7 @@ function App() {
         <button
           type="button"
           className="secondary-btn"
-          onClick={() => setCurrentPage("home")}
+          onClick={() => navigateTo("home", "#collections")}
         >
           Continue shopping
         </button>
@@ -452,7 +840,7 @@ function App() {
           <button
             type="button"
             className="primary-btn"
-            onClick={() => setCurrentPage("home")}
+            onClick={() => navigateTo("home", "#collections")}
           >
             Browse products
           </button>
@@ -713,11 +1101,13 @@ function App() {
                 required
               />
               <input
-                type="url"
-                placeholder="Image URL"
-                value={productForm.image}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
                 onChange={(event) =>
-                  setProductForm({ ...productForm, image: event.target.value })
+                  setProductForm({
+                    ...productForm,
+                    imageFile: event.target.files[0] || null,
+                  })
                 }
                 required
               />
@@ -766,8 +1156,8 @@ function App() {
         <div className="brand-block">
           <div className="brand-logo">C</div>
           <div>
-            <p className="brand-name">CrapperCurtain</p>
-            <span className="brand-tag">Crafted interiors</span>
+            <p className="brand-name">C.K Business Ltd</p>
+            <span className="brand-tag">Furniture & interior design</span>
           </div>
         </div>
 
@@ -775,21 +1165,21 @@ function App() {
           <button
             type="button"
             className={currentPage === "home" ? "nav-link active" : "nav-link"}
-            onClick={() => setCurrentPage("home")}
+            onClick={() => navigateTo("home")}
           >
             Home
           </button>
           <button
             type="button"
             className={currentPage === "cart" ? "nav-link active" : "nav-link"}
-            onClick={() => setCurrentPage("cart")}
+            onClick={() => navigateTo("cart")}
           >
             Cart {cartCount > 0 ? `(${cartCount})` : ""}
           </button>
           <button
             type="button"
             className={currentPage === "admin" ? "nav-link active" : "nav-link"}
-            onClick={() => setCurrentPage("admin")}
+            onClick={() => navigateTo("admin")}
           >
             {isAdminLoggedIn ? "Admin Panel" : "Admin Login"}
           </button>
@@ -803,6 +1193,178 @@ function App() {
       {currentPage === "home" && renderHomePage()}
       {currentPage === "cart" && renderCartPage()}
       {currentPage === "admin" && renderAdminPage()}
+
+      {ratingModalProduct && (
+        <div
+          className="rating-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setRatingModalProduct(null);
+            }
+          }}
+        >
+          <form
+            className="rating-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rating-modal-title"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const saved = await handleRateProduct(
+                ratingModalProduct.id,
+                ratingModalValue,
+                ratingModalFeedback,
+                ratingModalName,
+              );
+
+              if (saved) {
+                setRatingModalProduct(null);
+              }
+            }}
+          >
+            <div className="rating-modal-header">
+              <div>
+                <span className="eyebrow">Customer feedback</span>
+                <h2 id="rating-modal-title">Rate {ratingModalProduct.name}</h2>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                aria-label="Close rating dialog"
+                onClick={() => setRatingModalProduct(null)}
+              >
+                ×
+              </button>
+            </div>
+
+            {ratingMessage && (
+              <p className="rating-modal-message">{ratingMessage}</p>
+            )}
+
+            <label className="modal-field">
+              <span>Your name</span>
+              <input
+                type="text"
+                value={ratingModalName}
+                maxLength="80"
+                placeholder="Enter your name"
+                onChange={(event) => setRatingModalName(event.target.value)}
+                required
+              />
+            </label>
+
+            <div className="modal-field">
+              <span>Your rating</span>
+              <div
+                className="modal-star-rating"
+                role="radiogroup"
+                aria-label={`Rate ${ratingModalProduct.name}`}
+              >
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    className={
+                      star <= ratingModalValue
+                        ? "star-button filled"
+                        : "star-button"
+                    }
+                    role="radio"
+                    aria-checked={ratingModalValue === star}
+                    aria-label={`${star} star${star === 1 ? "" : "s"}`}
+                    onClick={() => setRatingModalValue(star)}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="modal-field">
+              <span>Your feedback</span>
+              <textarea
+                rows="4"
+                maxLength="240"
+                value={ratingModalFeedback}
+                placeholder="Tell us about your experience"
+                onChange={(event) => setRatingModalFeedback(event.target.value)}
+                required
+              />
+            </label>
+
+            <div className="rating-modal-actions">
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setRatingModalProduct(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="primary-btn"
+                disabled={ratingSubmitting === ratingModalProduct.id}
+              >
+                {ratingSubmitting === ratingModalProduct.id
+                  ? "Saving..."
+                  : "Submit rating"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <footer className="site-footer">
+        <div className="footer-main">
+          <div className="footer-contact">
+            <span className="footer-label">Visit or contact us</span>
+            <h2>Let’s shape your next space</h2>
+            <ul>
+              <li>
+                <span>Find us</span>
+                <strong>KK 394 Street, Gisozi, Kigali</strong>
+              </li>
+              <li>
+                <span>Call us</span>
+                <a href="tel:+250790235869">+250790235869</a>
+              </li>
+              <li>
+                <span>Email us</span>
+                <a href="mailto:nshutifreddy555@gmail.com">
+                  nshutifreddy555@gmail.com
+                </a>
+              </li>
+              <li>
+                <span>Opening hours</span>
+                <strong>Open every day</strong>
+                <strong>Contact us for today’s availability</strong>
+              </li>
+            </ul>
+          </div>
+
+          <div className="footer-links">
+            <div>
+              <span className="footer-label">Explore</span>
+              <button type="button" onClick={() => navigateTo("home")}>
+                Home
+              </button>
+              <a href="/#services">Our services</a>
+              <a href="/#collections">gallery</a>
+            </div>
+            <div>
+              <span className="footer-label">Customer care</span>
+              <button type="button" onClick={() => navigateTo("cart")}>
+                Your cart {cartCount > 0 ? `(${cartCount})` : ""}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="footer-bottom">
+          <span>© 2026 C.K Business Ltd. Gisozi, Kigali.</span>
+          <span>Furniture · Interiors · Curtains · Office services</span>
+        </div>
+      </footer>
     </div>
   );
 }
