@@ -153,11 +153,13 @@ function App() {
     category: "All",
     sort: "featured",
   });
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const navigateTo = (page, hash = "") => {
     const path = page === "home" ? "/" : `/${page}`;
     window.history.pushState({}, "", `${path}${hash}`);
     setCurrentPage(page);
+    setMobileNavOpen(false);
 
     if (hash) {
       window.requestAnimationFrame(() => {
@@ -1153,15 +1155,34 @@ function App() {
   return (
     <div className="page-shell">
       <header className="topbar">
-        <div className="brand-block">
-          <div className="brand-logo">C</div>
-          <div>
-            <p className="brand-name">C.K Business Ltd</p>
-            <span className="brand-tag">Furniture & interior design</span>
+        <div className="topbar-start">
+          <div className="brand-block">
+            <div className="brand-logo">C</div>
+            <div>
+              <p className="brand-name">C.K Business Ltd</p>
+              <span className="brand-tag">Furniture & interior design</span>
+            </div>
           </div>
+
+          <button
+            type="button"
+            className="mobile-nav-toggle"
+            aria-expanded={mobileNavOpen}
+            aria-controls="main-navigation"
+            aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
+            onClick={() => setMobileNavOpen((open) => !open)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
         </div>
 
-        <nav className="main-nav" aria-label="Main navigation">
+        <nav
+          id="main-navigation"
+          className={`main-nav${mobileNavOpen ? " open" : ""}`}
+          aria-label="Main navigation"
+        >
           <button
             type="button"
             className={currentPage === "home" ? "nav-link active" : "nav-link"}
