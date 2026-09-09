@@ -1066,6 +1066,7 @@ function App() {
                 <option>office chair</option>
                 <option>office table</option>
                 <option>curtain</option>
+                <option>Non-office</option>
               </select>
               <input
                 type="number"
