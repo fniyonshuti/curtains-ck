@@ -78,7 +78,7 @@ const getFeedbackRows = (ratingRows, productList) =>
       ...row,
       productName:
         productList.find((product) => product.id === row.product_id)?.name ||
-        "Curtain product",
+        "Product",
     }))
     .sort((firstRow, secondRow) =>
       secondRow.created_at.localeCompare(firstRow.created_at),
@@ -388,7 +388,7 @@ function App() {
               created_at: new Date().toISOString(),
               productName:
                 products.find((product) => product.id === productId)?.name ||
-                "Curtain product",
+                "Product",
             },
             ...previousRows,
           ]);
@@ -426,7 +426,7 @@ function App() {
         created_at: new Date().toISOString(),
         productName:
           products.find((product) => product.id === productId)?.name ||
-          "Curtain product",
+          "Product",
       };
       const withoutCurrentFeedback = nextRows.filter(
         (row) =>
@@ -553,14 +553,14 @@ function App() {
       ...prevProducts,
     ]);
     setProductForm(EMPTY_PRODUCT_FORM);
-    setCheckoutMessage("A new curtain product has been added successfully.");
+    setCheckoutMessage("A new product has been added successfully.");
   };
 
   const handleCheckoutSubmit = (event) => {
     event.preventDefault();
 
     if (!cartItems.length) {
-      alert("Your cart is empty. Add a curtain before checking out.");
+      alert("Your cart is empty. Add a product before checking out.");
       return;
     }
 
@@ -636,7 +636,7 @@ function App() {
       <section id="collections" className="catalog-section">
         <div className="section-header">
           <div>
-            <span className="eyebrow">Featured styles</span>
+            <span className="eyebrow">Featured products</span>
             <h2>products</h2>
           </div>
           <span className="section-pill">
@@ -644,12 +644,12 @@ function App() {
           </span>
         </div>
 
-        <div className="catalog-toolbar" aria-label="Filter curtain styles">
+        <div className="catalog-toolbar" aria-label="Filter products">
           <label className="catalog-search">
-            <span className="sr-only">Search curtain styles</span>
+            <span className="sr-only">Search products</span>
             <input
               type="search"
-              placeholder="Search styles"
+              placeholder="Search products"
               value={catalogFilters.search}
               onChange={(event) =>
                 updateCatalogFilter("search", event.target.value)
@@ -674,7 +674,7 @@ function App() {
           </label>
 
           <label className="catalog-select">
-            <span className="sr-only">Sort curtain styles</span>
+            <span className="sr-only">Sort products</span>
             <select
               value={catalogFilters.sort}
               onChange={(event) =>
@@ -711,32 +711,34 @@ function App() {
           <div className="products-grid">
             {filteredProducts.map((product) => (
               <article key={product.id} className="product-card">
-                <img src={product.image} alt={product.name} />
+                <div className="product-media">
+                  <img src={product.image} alt={product.name} />
+                  <span className="product-category">{product.category}</span>
+                </div>
                 <div className="product-body">
-                  <div className="product-topline">
-                    <span>{product.category}</span>
-                    <span className="rating-summary">
-                      {product.ratingCount > 0
-                        ? `${getRatingStars(product.rating)} ${product.rating} · ${product.ratingCount} review${product.ratingCount === 1 ? "" : "s"}`
-                        : "No reviews yet"}
-                    </span>
-                  </div>
+                  <span className="rating-summary">
+                    {product.ratingCount > 0
+                      ? `★ ${product.rating} · ${product.ratingCount} review${product.ratingCount === 1 ? "" : "s"}`
+                      : "No reviews yet"}
+                  </span>
                   <h3>{product.name}</h3>
                   <p>{product.description}</p>
                   <div className="product-footer">
                     <strong>{formatCurrency(product.price)}</strong>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRatingModalProduct(product);
-                        setRatingModalValue(userRatings[product.id] || 0);
-                      }}
-                    >
-                      Rate product
-                    </button>
-                    <button type="button" onClick={() => addToCart(product)}>
-                      Add to cart
-                    </button>
+                    <div className="product-actions">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRatingModalProduct(product);
+                          setRatingModalValue(userRatings[product.id] || 0);
+                        }}
+                      >
+                        Rate
+                      </button>
+                      <button type="button" onClick={() => addToCart(product)}>
+                        Add to cart
+                      </button>
+                    </div>
                   </div>
                 </div>
               </article>
@@ -744,7 +746,7 @@ function App() {
           </div>
         ) : (
           <div className="catalog-empty-state">
-            <strong>No curtain styles found</strong>
+            <strong>No products found</strong>
             <p>
               Try another search or reset the filters to view the collection.
             </p>
@@ -759,7 +761,7 @@ function App() {
                 })
               }
             >
-              View all styles
+              View all products
             </button>
           </div>
         )}
@@ -813,7 +815,7 @@ function App() {
       {cartItems.length === 0 ? (
         <div className="empty-state-box">
           <h3>Your cart is empty</h3>
-          <p>Add a few curtains to begin your order.</p>
+          <p>Add a few products to begin your order.</p>
           <button
             type="button"
             className="primary-btn"
@@ -1042,10 +1044,10 @@ function App() {
 
           <div className="admin-grid">
             <form className="product-form" onSubmit={handleProductSubmit}>
-              <h3>Add a curtain</h3>
+              <h3>Add a product</h3>
               <input
                 type="text"
-                placeholder="Curtain name"
+                placeholder="Product name"
                 value={productForm.name}
                 onChange={(event) =>
                   setProductForm({ ...productForm, name: event.target.value })
@@ -1101,7 +1103,7 @@ function App() {
                 required
               />
               <button type="submit" className="primary-btn">
-                Save curtain
+                Save product
               </button>
             </form>
 

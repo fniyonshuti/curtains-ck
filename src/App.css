@@ -797,28 +797,41 @@ button {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 24px;
+  align-items: stretch;
 }
 
 .product-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   background: #fff;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
   transition:
     transform 0.28s ease,
-    box-shadow 0.28s ease;
+    box-shadow 0.28s ease,
+    border-color 0.28s ease;
   animation: fadeUp 0.6s ease both;
 }
 
 .product-card:hover {
-  transform: translateY(-7px);
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
+  transform: translateY(-6px);
+  border-color: rgba(148, 163, 184, 0.28);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+}
+
+.product-media {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  background: #ece7e0;
 }
 
 .product-card img {
   width: 100%;
-  height: 320px;
+  height: 100%;
   object-fit: cover;
   display: block;
   transition: transform 0.45s ease;
@@ -828,8 +841,27 @@ button {
   transform: scale(1.05);
 }
 
+.product-category {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  padding: 0.38rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #55452d;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+
 .product-body {
-  padding: 20px 18px 18px;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: 18px 16px 16px;
 }
 
 .product-topline {
@@ -844,22 +876,32 @@ button {
 
 .rating-summary {
   color: #a56f35;
-  letter-spacing: 0.03em;
-  text-transform: none;
-  white-space: nowrap;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .product-card h3 {
-  margin: 14px 0 10px;
+  margin: 8px 0 8px;
   color: #111827;
-  font-size: 1.4rem;
+  font-size: 1.22rem;
   line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .product-card p {
+  flex: 1;
+  margin: 0 0 16px;
   color: #4b5563;
-  line-height: 1.6;
-  min-height: 72px;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .rating-control {
@@ -1157,16 +1199,23 @@ button {
 }
 
 .product-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: grid;
   gap: 12px;
-  margin-top: 18px;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .product-footer strong {
   color: #111827;
-  font-size: 1.35rem;
+  font-size: 1.28rem;
+  letter-spacing: -0.02em;
+}
+
+.product-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .product-card button,
@@ -1176,9 +1225,13 @@ button {
 }
 
 .product-card button {
-  padding: 0.8rem 1.1rem;
+  width: 100%;
+  min-height: 42px;
+  padding: 0.7rem 0.6rem;
   background: #111827;
   color: #fff;
+  font-size: 0.82rem;
+  white-space: nowrap;
 }
 
 .rating-modal-backdrop {
@@ -1969,33 +2022,12 @@ button {
     height: 108vw;
   }
 
-  .product-card img {
-    height: 240px;
+  .product-media {
+    aspect-ratio: 16 / 11;
   }
 
-  .product-topline {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .rating-summary {
-    white-space: normal;
-    text-align: left;
-  }
-
-  .product-footer {
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-
-  .product-footer strong {
-    width: 100%;
-  }
-
-  .product-footer button {
-    flex: 1 1 calc(50% - 5px);
-    min-width: 0;
-    padding-inline: 0.75rem;
+  .product-card h3 {
+    font-size: 1.16rem;
   }
 
   .site-footer {
@@ -2117,15 +2149,11 @@ button {
   }
 
   .product-card h3 {
-    font-size: 1.2rem;
+    font-size: 1.14rem;
   }
 
   .product-card p {
-    min-height: 0;
-  }
-
-  .product-footer button {
-    flex-basis: 100%;
+    -webkit-line-clamp: 2;
   }
 
   .footer-contact h2 {
