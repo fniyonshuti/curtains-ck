@@ -1063,11 +1063,9 @@ function App() {
                   })
                 }
               >
-                <option>Living Room</option>
-                <option>Bedroom</option>
-                <option>Dining Room</option>
-                <option>Minimal</option>
-                <option>Statement</option>
+                <option>office chair</option>
+                <option>office table</option>
+                <option>curtain</option>
               </select>
               <input
                 type="number"
