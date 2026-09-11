@@ -7,6 +7,9 @@ const ADMIN_CREDENTIALS = {
   password: "admin123",
 };
 
+const PRODUCT_PAGE_SIZE = 12;
+const SUPABASE_PAGE_SIZE = 1000;
+
 const EMPTY_PRODUCT_FORM = {
   name: "",
   category: "Living Room",
@@ -27,9 +30,11 @@ const EMPTY_CHECKOUT_FORM = {
 };
 
 const formatCurrency = (value) =>
-  new Intl.NumberFormat("en-US", {
+  new Intl.NumberFormat("en-RW", {
     style: "currency",
-    currency: "USD",
+    currency: "RWF",
+    currencyDisplay: "code",
+    maximumFractionDigits: 0,
   }).format(value);
 
 const getRatingStars = (rating) =>
@@ -48,6 +53,41 @@ const isFeedbackColumnError = (error) =>
   ["feedback", "reviewer_name"].some((column) =>
     error?.message?.toLowerCase().includes(column),
   );
+
+const fetchSupabaseRows = async (
+  tableName,
+  columns,
+  { orderBy, ascending = true } = {},
+) => {
+  const allRows = [];
+  let start = 0;
+
+  while (true) {
+    let query = supabase.from(tableName).select(columns);
+
+    if (orderBy) {
+      query = query.order(orderBy, { ascending });
+    }
+
+    const { data, error } = await query.range(
+      start,
+      start + SUPABASE_PAGE_SIZE - 1,
+    );
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    const rows = data || [];
+    allRows.push(...rows);
+
+    if (rows.length < SUPABASE_PAGE_SIZE) {
+      return { data: allRows, error: null };
+    }
+
+    start += SUPABASE_PAGE_SIZE;
+  }
+};
 
 const applyRatingAverages = (productList, ratingRows) => {
   const ratingTotals = ratingRows.reduce((totals, row) => {
@@ -125,6 +165,8 @@ function App() {
   const [ratingMessage, setRatingMessage] = useState("");
   const [ratingModalProduct, setRatingModalProduct] = useState(null);
   const [ratingModalValue, setRatingModalValue] = useState(0);
+  const [ratingModalReviewerName, setRatingModalReviewerName] = useState("");
+  const [ratingModalFeedback, setRatingModalFeedback] = useState("");
   const [reviewerId] = useState(() => {
     const savedReviewerId = loadSavedState("curtain-reviewer-id", null);
 
@@ -151,7 +193,41 @@ function App() {
     category: "All",
     sort: "featured",
   });
+  const [catalogPage, setCatalogPage] = useState(1);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [imageViewerProduct, setImageViewerProduct] = useState(null);
+  const [imageZoom, setImageZoom] = useState(1);
+
+  const openImageViewer = (product) => {
+    setImageViewerProduct(product);
+    setImageZoom(1);
+  };
+
+  const closeImageViewer = () => {
+    setImageViewerProduct(null);
+    setImageZoom(1);
+  };
+
+  const updateImageZoom = (nextZoom) => {
+    const zoom = Number(nextZoom);
+    setImageZoom(Math.min(3, Math.max(1, Number(zoom.toFixed(2)))));
+  };
+
+  const openRatingModal = (product) => {
+    setRatingModalProduct(product);
+    setRatingModalValue(userRatings[product.id] || 0);
+    setRatingModalReviewerName("");
+    setRatingModalFeedback("");
+    setRatingMessage("");
+  };
+
+  const closeRatingModal = () => {
+    setRatingModalProduct(null);
+    setRatingModalValue(0);
+    setRatingModalReviewerName("");
+    setRatingModalFeedback("");
+    setRatingMessage("");
+  };
 
   const navigateTo = (page, hash = "") => {
     const path = page === "home" ? "/" : `/${page}`;
@@ -181,10 +257,11 @@ function App() {
     }
 
     const loadProducts = async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, name, category, price, rating, image_url, description")
-        .order("created_at", { ascending: false });
+      const { data, error } = await fetchSupabaseRows(
+        "products",
+        "id, name, category, price, rating, image_url, description",
+        { orderBy: "created_at", ascending: false },
+      );
 
       if (error) {
         console.error("Could not load products from Supabase:", error);
@@ -196,18 +273,20 @@ function App() {
         image: product.image_url,
       }));
 
-      const { data: ratingRows, error: ratingsError } = await supabase
-        .from("product_ratings")
-        .select(
-          "product_id, rating, reviewer_id, reviewer_name, feedback, created_at",
-        );
+      const { data: ratingRows, error: ratingsError } = await fetchSupabaseRows(
+        "product_ratings",
+        "product_id, rating, reviewer_id, reviewer_name, feedback, created_at",
+        { orderBy: "created_at", ascending: false },
+      );
 
       if (ratingsError) {
         if (isFeedbackColumnError(ratingsError)) {
           const { data: legacyRatingRows, error: legacyRatingsError } =
-            await supabase
-              .from("product_ratings")
-              .select("product_id, rating, reviewer_id, created_at");
+            await fetchSupabaseRows(
+              "product_ratings",
+              "product_id, rating, reviewer_id, created_at",
+              { orderBy: "created_at", ascending: false },
+            );
 
           if (!legacyRatingsError) {
             const safeLegacyRows = legacyRatingRows || [];
@@ -260,6 +339,28 @@ function App() {
     window.localStorage.setItem("curtain-orders", JSON.stringify(orders));
   }, [orders]);
 
+  useEffect(() => {
+    if (!imageViewerProduct) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setImageViewerProduct(null);
+        setImageZoom(1);
+      }
+    };
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [imageViewerProduct]);
+
   const cartItems = useMemo(
     () =>
       cart
@@ -293,7 +394,7 @@ function App() {
       const matchesSearch =
         !searchTerm ||
         [product.name, product.category, product.description].some((value) =>
-          value.toLowerCase().includes(searchTerm),
+          String(value || "").toLowerCase().includes(searchTerm),
         );
 
       return matchesCategory && matchesSearch;
@@ -316,16 +417,62 @@ function App() {
     });
   }, [catalogFilters, products]);
 
+  const catalogPageCount = Math.max(
+    1,
+    Math.ceil(filteredProducts.length / PRODUCT_PAGE_SIZE),
+  );
+  const currentCatalogPage = Math.min(catalogPage, catalogPageCount);
+  const catalogStartIndex = (currentCatalogPage - 1) * PRODUCT_PAGE_SIZE;
+  const paginatedProducts = filteredProducts.slice(
+    catalogStartIndex,
+    catalogStartIndex + PRODUCT_PAGE_SIZE,
+  );
+  const catalogStartProduct = filteredProducts.length ? catalogStartIndex + 1 : 0;
+  const catalogEndProduct = Math.min(
+    catalogStartIndex + PRODUCT_PAGE_SIZE,
+    filteredProducts.length,
+  );
+  const catalogPageNumbers = useMemo(() => {
+    const firstPage = Math.max(
+      1,
+      Math.min(currentCatalogPage - 2, catalogPageCount - 4),
+    );
+    const lastPage = Math.min(catalogPageCount, firstPage + 4);
+
+    return Array.from(
+      { length: lastPage - firstPage + 1 },
+      (_, index) => firstPage + index,
+    );
+  }, [catalogPageCount, currentCatalogPage]);
+
   const hasActiveFilters =
     catalogFilters.search ||
     catalogFilters.category !== "All" ||
     catalogFilters.sort !== "featured";
 
   const updateCatalogFilter = (name, value) => {
+    setCatalogPage(1);
     setCatalogFilters((previousFilters) => ({
       ...previousFilters,
       [name]: value,
     }));
+  };
+
+  const resetCatalogFilters = () => {
+    setCatalogPage(1);
+    setCatalogFilters({
+      search: "",
+      category: "All",
+      sort: "featured",
+    });
+  };
+
+  const updateCatalogPage = (page) => {
+    const nextPage = Math.min(catalogPageCount, Math.max(1, page));
+    setCatalogPage(nextPage);
+    document
+      .querySelector("#collections")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const handleRateProduct = async (
@@ -335,6 +482,8 @@ function App() {
     reviewerName,
   ) => {
     const rating = Number(ratingValue);
+    const cleanFeedback = feedbackText.trim();
+    const cleanReviewerName = reviewerName.trim();
 
     if (!rating || !isSupabaseConfigured) {
       setRatingMessage(
@@ -347,7 +496,13 @@ function App() {
     setRatingMessage("");
 
     const { error: saveError } = await supabase.from("product_ratings").upsert(
-      { product_id: productId, reviewer_id: reviewerId, rating },
+      {
+        product_id: productId,
+        reviewer_id: reviewerId,
+        reviewer_name: cleanReviewerName,
+        rating,
+        feedback: cleanFeedback,
+      },
       { onConflict: "product_id,reviewer_id" },
     );
 
@@ -361,30 +516,32 @@ function App() {
       return false;
     }
 
-    const { data: ratingRows, error: ratingsError } = await supabase
-      .from("product_ratings")
-      .select(
-        "product_id, rating, reviewer_id, reviewer_name, feedback, created_at",
-      );
+    const { data: ratingRows, error: ratingsError } = await fetchSupabaseRows(
+      "product_ratings",
+      "product_id, rating, reviewer_id, reviewer_name, feedback, created_at",
+      { orderBy: "created_at", ascending: false },
+    );
 
     if (ratingsError) {
-      const { data: legacyRatingRows } = await supabase
-        .from("product_ratings")
-        .select("product_id, rating, reviewer_id, created_at");
+      const { data: legacyRatingRows } = await fetchSupabaseRows(
+        "product_ratings",
+        "product_id, rating, reviewer_id, created_at",
+        { orderBy: "created_at", ascending: false },
+      );
 
       if (legacyRatingRows) {
         setProducts((previousProducts) =>
           applyRatingAverages(previousProducts, legacyRatingRows),
         );
-        if (feedbackText.trim()) {
+        if (cleanFeedback) {
           setFeedbackRows((previousRows) => [
             {
               id: `pending-${productId}-${Date.now()}`,
               product_id: productId,
               reviewer_id: reviewerId,
-              reviewer_name: reviewerName.trim(),
+              reviewer_name: cleanReviewerName,
               rating,
-              feedback: feedbackText.trim(),
+              feedback: cleanFeedback,
               created_at: new Date().toISOString(),
               productName:
                 products.find((product) => product.id === productId)?.name ||
@@ -410,7 +567,7 @@ function App() {
     setFeedbackRows(() => {
       const nextProducts = applyRatingAverages(products, ratingRows);
       const nextRows = getFeedbackRows(ratingRows, nextProducts);
-      const submittedFeedback = feedbackText.trim();
+      const submittedFeedback = cleanFeedback;
 
       if (!submittedFeedback) {
         return nextRows;
@@ -420,7 +577,7 @@ function App() {
         id: `current-${productId}`,
         product_id: productId,
         reviewer_id: reviewerId,
-        reviewer_name: reviewerName.trim(),
+        reviewer_name: cleanReviewerName,
         rating,
         feedback: submittedFeedback,
         created_at: new Date().toISOString(),
@@ -552,6 +709,7 @@ function App() {
       { ...savedProduct, image: savedProduct.image_url },
       ...prevProducts,
     ]);
+    setCatalogPage(1);
     setProductForm(EMPTY_PRODUCT_FORM);
     setCheckoutMessage("A new product has been added successfully.");
   };
@@ -640,7 +798,10 @@ function App() {
             <h2>products</h2>
           </div>
           <span className="section-pill">
-            {filteredProducts.length} of {products.length} products
+            {filteredProducts.length > 0
+              ? `Showing ${catalogStartProduct}-${catalogEndProduct} of ${filteredProducts.length}`
+              : "0"}{" "}
+            products
           </span>
         </div>
 
@@ -692,13 +853,7 @@ function App() {
             <button
               type="button"
               className="clear-filters"
-              onClick={() =>
-                setCatalogFilters({
-                  search: "",
-                  category: "All",
-                  sort: "featured",
-                })
-              }
+              onClick={resetCatalogFilters}
             >
               Clear filters
             </button>
@@ -708,12 +863,21 @@ function App() {
         {ratingMessage && <p className="rating-message">{ratingMessage}</p>}
 
         {filteredProducts.length > 0 ? (
-          <div className="products-grid">
-            {filteredProducts.map((product) => (
+          <>
+            <div className="products-grid">
+              {paginatedProducts.map((product) => (
               <article key={product.id} className="product-card">
                 <div className="product-media">
                   <img src={product.image} alt={product.name} />
                   <span className="product-category">{product.category}</span>
+                  <button
+                    type="button"
+                    className="product-view-btn"
+                    aria-label={`View larger image of ${product.name}`}
+                    onClick={() => openImageViewer(product)}
+                  >
+                    View
+                  </button>
                 </div>
                 <div className="product-body">
                   <span className="rating-summary">
@@ -728,10 +892,7 @@ function App() {
                     <div className="product-actions">
                       <button
                         type="button"
-                        onClick={() => {
-                          setRatingModalProduct(product);
-                          setRatingModalValue(userRatings[product.id] || 0);
-                        }}
+                        onClick={() => openRatingModal(product)}
                       >
                         Rate
                       </button>
@@ -742,8 +903,47 @@ function App() {
                   </div>
                 </div>
               </article>
-            ))}
-          </div>
+              ))}
+            </div>
+
+            {catalogPageCount > 1 && (
+              <nav className="catalog-pagination" aria-label="Product pages">
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => updateCatalogPage(currentCatalogPage - 1)}
+                  disabled={currentCatalogPage === 1}
+                >
+                  Previous
+                </button>
+                <div className="pagination-pages">
+                  {catalogPageNumbers.map((page) => (
+                    <button
+                      key={page}
+                      type="button"
+                      className={
+                        page === currentCatalogPage
+                          ? "pagination-page active"
+                          : "pagination-page"
+                      }
+                      aria-current={page === currentCatalogPage ? "page" : undefined}
+                      onClick={() => updateCatalogPage(page)}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="pagination-btn"
+                  onClick={() => updateCatalogPage(currentCatalogPage + 1)}
+                  disabled={currentCatalogPage === catalogPageCount}
+                >
+                  Next
+                </button>
+              </nav>
+            )}
+          </>
         ) : (
           <div className="catalog-empty-state">
             <strong>No products found</strong>
@@ -753,13 +953,7 @@ function App() {
             <button
               type="button"
               className="secondary-btn"
-              onClick={() =>
-                setCatalogFilters({
-                  search: "",
-                  category: "All",
-                  sort: "featured",
-                })
-              }
+              onClick={resetCatalogFilters}
             >
               View all products
             </button>
@@ -1191,13 +1385,96 @@ function App() {
       {currentPage === "cart" && renderCartPage()}
       {currentPage === "admin" && renderAdminPage()}
 
+      {imageViewerProduct && (
+        <div
+          className="image-viewer-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeImageViewer();
+            }
+          }}
+        >
+          <div
+            className="image-viewer-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="image-viewer-title"
+          >
+            <div className="image-viewer-header">
+              <div>
+                <span className="eyebrow">{imageViewerProduct.category}</span>
+                <h2 id="image-viewer-title">{imageViewerProduct.name}</h2>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                aria-label="Close image viewer"
+                onClick={closeImageViewer}
+              >
+                X
+              </button>
+            </div>
+
+            <div className="image-viewer-toolbar" aria-label="Image zoom controls">
+              <button
+                type="button"
+                onClick={() => updateImageZoom(imageZoom - 0.25)}
+                disabled={imageZoom <= 1}
+                aria-label="Zoom out"
+              >
+                -
+              </button>
+              <span>{Math.round(imageZoom * 100)}%</span>
+              <input
+                type="range"
+                min="1"
+                max="3"
+                step="0.25"
+                value={imageZoom}
+                aria-label="Zoom image"
+                onChange={(event) => updateImageZoom(event.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => updateImageZoom(imageZoom + 0.25)}
+                disabled={imageZoom >= 3}
+                aria-label="Zoom in"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                className="image-viewer-reset"
+                onClick={() => updateImageZoom(1)}
+                disabled={imageZoom === 1}
+              >
+                Reset
+              </button>
+            </div>
+
+            <div className="image-viewer-stage">
+              <div
+                className="image-viewer-canvas"
+                style={{ width: `${imageZoom * 100}%` }}
+              >
+                <img
+                  src={imageViewerProduct.image}
+                  alt={imageViewerProduct.name}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {ratingModalProduct && (
         <div
           className="rating-modal-backdrop"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
-              setRatingModalProduct(null);
+              closeRatingModal();
             }
           }}
         >
@@ -1214,15 +1491,25 @@ function App() {
                 return;
               }
 
+              if (!ratingModalReviewerName.trim()) {
+                setRatingMessage("Please enter your name before submitting.");
+                return;
+              }
+
+              if (!ratingModalFeedback.trim()) {
+                setRatingMessage("Please write a short message before submitting.");
+                return;
+              }
+
               const saved = await handleRateProduct(
                 ratingModalProduct.id,
                 ratingModalValue,
-                "",
-                "",
+                ratingModalFeedback,
+                ratingModalReviewerName,
               );
 
               if (saved) {
-                setRatingModalProduct(null);
+                closeRatingModal();
               }
             }}
           >
@@ -1235,7 +1522,7 @@ function App() {
                 type="button"
                 className="modal-close"
                 aria-label="Close rating dialog"
-                onClick={() => setRatingModalProduct(null)}
+                onClick={closeRatingModal}
               >
                 ×
               </button>
@@ -1272,11 +1559,37 @@ function App() {
               </div>
             </div>
 
+            <div className="modal-field">
+              <span>Your name</span>
+              <input
+                type="text"
+                value={ratingModalReviewerName}
+                placeholder="Your name"
+                maxLength="80"
+                onChange={(event) =>
+                  setRatingModalReviewerName(event.target.value)
+                }
+                required
+              />
+            </div>
+
+            <div className="modal-field">
+              <span>Your message</span>
+              <textarea
+                value={ratingModalFeedback}
+                placeholder="Tell us what you think about this product"
+                rows="4"
+                maxLength="280"
+                onChange={(event) => setRatingModalFeedback(event.target.value)}
+                required
+              />
+            </div>
+
             <div className="rating-modal-actions">
               <button
                 type="button"
                 className="secondary-btn"
-                onClick={() => setRatingModalProduct(null)}
+                onClick={closeRatingModal}
               >
                 Cancel
               </button>
@@ -1285,6 +1598,8 @@ function App() {
                 className="primary-btn"
                 disabled={
                   !ratingModalValue ||
+                  !ratingModalReviewerName.trim() ||
+                  !ratingModalFeedback.trim() ||
                   ratingSubmitting === ratingModalProduct.id
                 }
               >
