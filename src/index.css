@@ -1,13 +1,14 @@
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap");
 
 :root {
-  font-family: "DM Sans", "Trebuchet MS", Arial, sans-serif;
+  font-family: "Inter", "Trebuchet MS", Arial, sans-serif;
+  font-size: 14px;
   line-height: 1.5;
   font-weight: 400;
   color: #111827;
   background: #f5f2ee;
-  --font-display: "Cormorant Garamond", Georgia, serif;
-  --font-ui: "DM Sans", "Trebuchet MS", Arial, sans-serif;
+  --font-display: "Outfit", Georgia, serif;
+  --font-ui: "Inter", "Trebuchet MS", Arial, sans-serif;
   --ink: #18221f;
   --muted: #66706b;
   --paper: #f7f5f0;

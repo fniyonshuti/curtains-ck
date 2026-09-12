@@ -54,6 +54,52 @@ const isFeedbackColumnError = (error) =>
     error?.message?.toLowerCase().includes(column),
   );
 
+const ProductDescription = ({ text }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const isLong = text && text.length > 80;
+  
+  if (!isLong) {
+    return <p>{text}</p>;
+  }
+
+  const displayText = isExpanded ? text : `${text.substring(0, 80)}...`;
+
+  return (
+    <div className="product-description-container">
+      <p>{displayText}</p>
+      <span 
+        className="read-more-link" 
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        {isExpanded ? "Read less" : "Read more"}
+      </span>
+    </div>
+  );
+};
+
+const ExpandableFeedback = ({ text }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const isLong = text && text.length > 60;
+  
+  if (!isLong) {
+    return <p>“{text}”</p>;
+  }
+
+  const displayText = isExpanded ? text : `${text.substring(0, 60)}...`;
+
+  return (
+    <div className="product-description-container">
+      <p>“{displayText}”</p>
+      <span 
+        className="read-more-link" 
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        {isExpanded ? "Read less" : "Read more"}
+      </span>
+    </div>
+  );
+};
+
 const fetchSupabaseRows = async (
   tableName,
   columns,
@@ -886,7 +932,7 @@ function App() {
                       : "No reviews yet"}
                   </span>
                   <h3>{product.name}</h3>
-                  <p>{product.description}</p>
+                  <ProductDescription text={product.description} />
                   <div className="product-footer">
                     <strong>{formatCurrency(product.price)}</strong>
                     <div className="product-actions">
@@ -968,22 +1014,24 @@ function App() {
         </div>
 
         {feedbackRows.length > 0 && (
-          <div className="feedback-grid">
-            {feedbackRows.slice(0, 6).map((feedback) => (
-              <article className="feedback-card" key={feedback.id}>
-                <div className="feedback-card-topline">
-                  <span>{getRatingStars(feedback.rating)}</span>
-                  <time dateTime={feedback.created_at}>
-                    {formatFeedbackDate(feedback.created_at)}
-                  </time>
-                </div>
-                <p>“{feedback.feedback}”</p>
-                <strong>
-                  {feedback.reviewer_name || "Verified customer"} ·{" "}
-                  {feedback.productName}
-                </strong>
-              </article>
-            ))}
+          <div className="feedback-marquee-wrapper">
+            <div className="feedback-marquee-content">
+              {[...feedbackRows.slice(0, 6), ...feedbackRows.slice(0, 6)].map((feedback, index) => (
+                <article className="feedback-card" key={`${feedback.id}-${index}`}>
+                  <div className="feedback-card-topline">
+                    <span>{getRatingStars(feedback.rating)}</span>
+                    <time dateTime={feedback.created_at}>
+                      {formatFeedbackDate(feedback.created_at)}
+                    </time>
+                  </div>
+                  <ExpandableFeedback text={feedback.feedback} />
+                  <span className="feedback-author">
+                    {feedback.reviewer_name || "Verified customer"} ·{" "}
+                    {feedback.productName}
+                  </span>
+                </article>
+              ))}
+            </div>
           </div>
         )}
       </section>

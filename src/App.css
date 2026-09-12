@@ -2407,3 +2407,83 @@ button {
     min-height: 420px;
   }
 }
+
+/* Product Description Read More/Less */
+.product-description-container {
+  margin-bottom: 12px;
+}
+
+.product-description-container p {
+  margin-bottom: 4px;
+}
+
+.read-more-link {
+  background: none;
+  border: none;
+  color: #b9824d;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  transition: color 0.2s;
+}
+
+.read-more-link:hover {
+  color: #8a5d33;
+}
+
+/* Feedback Marquee Animation */
+.feedback-marquee-wrapper {
+  overflow: hidden;
+  white-space: nowrap;
+  width: 100%;
+  position: relative;
+  margin-top: 18px;
+  padding-bottom: 24px;
+}
+
+.feedback-marquee-wrapper::before,
+.feedback-marquee-wrapper::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.feedback-marquee-wrapper::before {
+  left: 0;
+  background: linear-gradient(to right, #f8fafc, transparent);
+}
+
+.feedback-marquee-wrapper::after {
+  right: 0;
+  background: linear-gradient(to left, #f8fafc, transparent);
+}
+
+.feedback-marquee-content {
+  display: inline-flex;
+  gap: 16px;
+  animation: scrollLeft 25s linear infinite;
+}
+
+.feedback-marquee-content:hover {
+  animation-play-state: paused;
+}
+
+.feedback-marquee-content .feedback-card {
+  width: 260px;
+  min-width: 260px;
+  white-space: normal;
+  margin: 0;
+  padding: 16px;
+}
+
+@keyframes scrollLeft {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(calc(-50% - 8px)); }
+}
