@@ -57,7 +57,7 @@ const isFeedbackColumnError = (error) =>
 const ProductDescription = ({ text }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const isLong = text && text.length > 80;
-  
+
   if (!isLong) {
     return <p>{text}</p>;
   }
@@ -67,8 +67,8 @@ const ProductDescription = ({ text }) => {
   return (
     <div className="product-description-container">
       <p>{displayText}</p>
-      <span 
-        className="read-more-link" 
+      <span
+        className="read-more-link"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         {isExpanded ? "Read less" : "Read more"}
@@ -80,7 +80,7 @@ const ProductDescription = ({ text }) => {
 const ExpandableFeedback = ({ text }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const isLong = text && text.length > 60;
-  
+
   if (!isLong) {
     return <p>“{text}”</p>;
   }
@@ -90,8 +90,8 @@ const ExpandableFeedback = ({ text }) => {
   return (
     <div className="product-description-container">
       <p>“{displayText}”</p>
-      <span 
-        className="read-more-link" 
+      <span
+        className="read-more-link"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         {isExpanded ? "Read less" : "Read more"}
@@ -189,7 +189,10 @@ const getPageFromPath = () => {
   }
 
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  return path === "/cart" || path === "/admin" ? path.slice(1) : "home";
+  if (["/cart", "/admin", "/gallery"].includes(path)) {
+    return path.slice(1);
+  }
+  return "home";
 };
 
 function App() {
@@ -239,6 +242,7 @@ function App() {
     category: "All",
     sort: "featured",
   });
+  const [galleryCategory, setGalleryCategory] = useState("All");
   const [catalogPage, setCatalogPage] = useState(1);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [imageViewerProduct, setImageViewerProduct] = useState(null);
@@ -440,7 +444,9 @@ function App() {
       const matchesSearch =
         !searchTerm ||
         [product.name, product.category, product.description].some((value) =>
-          String(value || "").toLowerCase().includes(searchTerm),
+          String(value || "")
+            .toLowerCase()
+            .includes(searchTerm),
         );
 
       return matchesCategory && matchesSearch;
@@ -473,7 +479,9 @@ function App() {
     catalogStartIndex,
     catalogStartIndex + PRODUCT_PAGE_SIZE,
   );
-  const catalogStartProduct = filteredProducts.length ? catalogStartIndex + 1 : 0;
+  const catalogStartProduct = filteredProducts.length
+    ? catalogStartIndex + 1
+    : 0;
   const catalogEndProduct = Math.min(
     catalogStartIndex + PRODUCT_PAGE_SIZE,
     filteredProducts.length,
@@ -789,6 +797,111 @@ function App() {
     navigateTo("home");
   };
 
+  const renderGalleryPage = () => {
+    const galleryProducts = products.filter((product) => product.image);
+    const galleryCategories = [
+      "All",
+      ...new Set(
+        galleryProducts.map((product) => product.category).filter(Boolean),
+      ),
+    ];
+    const visibleGalleryProducts = galleryProducts.filter(
+      (product) =>
+        galleryCategory === "All" || product.category === galleryCategory,
+    );
+
+    if (galleryProducts.length === 0) {
+      return (
+        <main className="gallery-page empty-gallery">
+          <div className="gallery-header">
+            <span className="eyebrow">Inspiration</span>
+            <h1>Our collection</h1>
+            <p>
+              Product photography will appear here as soon as the collection is
+              available.
+            </p>
+          </div>
+        </main>
+      );
+    }
+
+    return (
+      <main className="gallery-page">
+        <div className="gallery-header">
+          <span className="eyebrow">Inspiration</span>
+          <h1>Made to shape a space.</h1>
+          <p>
+            Explore the details, textures, and pieces in the C.K collection.
+          </p>
+        </div>
+
+        <div className="gallery-toolbar">
+          <div
+            className="gallery-filters"
+            role="group"
+            aria-label="Filter gallery by category"
+          >
+            {galleryCategories.map((category) => (
+              <button
+                key={category}
+                type="button"
+                className={galleryCategory === category ? "active" : ""}
+                aria-pressed={galleryCategory === category}
+                onClick={() => setGalleryCategory(category)}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+          <span className="gallery-count" aria-live="polite">
+            {visibleGalleryProducts.length}{" "}
+            {visibleGalleryProducts.length === 1 ? "piece" : "pieces"}
+          </span>
+        </div>
+
+        {visibleGalleryProducts.length > 0 ? (
+          <div className="gallery-grid">
+            {visibleGalleryProducts.map((product, index) => (
+              <article className="gallery-card" key={product.id}>
+                <button
+                  type="button"
+                  className="gallery-card-image"
+                  onClick={() => openImageViewer(product)}
+                  aria-label={`View ${product.name}`}
+                >
+                  <img
+                    src={product.image}
+                    alt={product.name}
+                    loading={index < 4 ? "eager" : "lazy"}
+                  />
+                  <span className="gallery-view-label">View image</span>
+                </button>
+                <div className="gallery-card-info">
+                  <div>
+                    <span className="gallery-card-category">
+                      {product.category}
+                    </span>
+                    <h2>{product.name}</h2>
+                  </div>
+                  <span className="gallery-card-price">
+                    {formatCurrency(product.price)}
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="gallery-empty-filter">
+            <p>No pieces in this category yet.</p>
+            <button type="button" onClick={() => setGalleryCategory("All")}>
+              View all pieces
+            </button>
+          </div>
+        )}
+      </main>
+    );
+  };
+
   const renderHomePage = () => (
     <main className="content-area">
       <section className="hero-section">
@@ -912,43 +1025,46 @@ function App() {
           <>
             <div className="products-grid">
               {paginatedProducts.map((product) => (
-              <article key={product.id} className="product-card">
-                <div className="product-media">
-                  <img src={product.image} alt={product.name} />
-                  <span className="product-category">{product.category}</span>
-                  <button
-                    type="button"
-                    className="product-view-btn"
-                    aria-label={`View larger image of ${product.name}`}
-                    onClick={() => openImageViewer(product)}
-                  >
-                    View
-                  </button>
-                </div>
-                <div className="product-body">
-                  <span className="rating-summary">
-                    {product.ratingCount > 0
-                      ? `★ ${product.rating} · ${product.ratingCount} review${product.ratingCount === 1 ? "" : "s"}`
-                      : "No reviews yet"}
-                  </span>
-                  <h3>{product.name}</h3>
-                  <ProductDescription text={product.description} />
-                  <div className="product-footer">
-                    <strong>{formatCurrency(product.price)}</strong>
-                    <div className="product-actions">
-                      <button
-                        type="button"
-                        onClick={() => openRatingModal(product)}
-                      >
-                        Rate
-                      </button>
-                      <button type="button" onClick={() => addToCart(product)}>
-                        Add to cart
-                      </button>
+                <article key={product.id} className="product-card">
+                  <div className="product-media">
+                    <img src={product.image} alt={product.name} />
+                    <span className="product-category">{product.category}</span>
+                    <button
+                      type="button"
+                      className="product-view-btn"
+                      aria-label={`View larger image of ${product.name}`}
+                      onClick={() => openImageViewer(product)}
+                    >
+                      View
+                    </button>
+                  </div>
+                  <div className="product-body">
+                    <span className="rating-summary">
+                      {product.ratingCount > 0
+                        ? `★ ${product.rating} · ${product.ratingCount} review${product.ratingCount === 1 ? "" : "s"}`
+                        : "No reviews yet"}
+                    </span>
+                    <h3>{product.name}</h3>
+                    <ProductDescription text={product.description} />
+                    <div className="product-footer">
+                      <strong>{formatCurrency(product.price)}</strong>
+                      <div className="product-actions">
+                        <button
+                          type="button"
+                          onClick={() => openRatingModal(product)}
+                        >
+                          Rate
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => addToCart(product)}
+                        >
+                          Add to cart
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </article>
+                </article>
               ))}
             </div>
 
@@ -972,7 +1088,9 @@ function App() {
                           ? "pagination-page active"
                           : "pagination-page"
                       }
-                      aria-current={page === currentCatalogPage ? "page" : undefined}
+                      aria-current={
+                        page === currentCatalogPage ? "page" : undefined
+                      }
                       onClick={() => updateCatalogPage(page)}
                     >
                       {page}
@@ -1016,21 +1134,26 @@ function App() {
         {feedbackRows.length > 0 && (
           <div className="feedback-marquee-wrapper">
             <div className="feedback-marquee-content">
-              {[...feedbackRows.slice(0, 6), ...feedbackRows.slice(0, 6)].map((feedback, index) => (
-                <article className="feedback-card" key={`${feedback.id}-${index}`}>
-                  <div className="feedback-card-topline">
-                    <span>{getRatingStars(feedback.rating)}</span>
-                    <time dateTime={feedback.created_at}>
-                      {formatFeedbackDate(feedback.created_at)}
-                    </time>
-                  </div>
-                  <ExpandableFeedback text={feedback.feedback} />
-                  <span className="feedback-author">
-                    {feedback.reviewer_name || "Verified customer"} ·{" "}
-                    {feedback.productName}
-                  </span>
-                </article>
-              ))}
+              {[...feedbackRows.slice(0, 6), ...feedbackRows.slice(0, 6)].map(
+                (feedback, index) => (
+                  <article
+                    className="feedback-card"
+                    key={`${feedback.id}-${index}`}
+                  >
+                    <div className="feedback-card-topline">
+                      <span>{getRatingStars(feedback.rating)}</span>
+                      <time dateTime={feedback.created_at}>
+                        {formatFeedbackDate(feedback.created_at)}
+                      </time>
+                    </div>
+                    <ExpandableFeedback text={feedback.feedback} />
+                    <span className="feedback-author">
+                      {feedback.reviewer_name || "Verified customer"} ·{" "}
+                      {feedback.productName}
+                    </span>
+                  </article>
+                ),
+              )}
             </div>
           </div>
         )}
@@ -1410,6 +1533,15 @@ function App() {
           </button>
           <button
             type="button"
+            className={
+              currentPage === "gallery" ? "nav-link active" : "nav-link"
+            }
+            onClick={() => navigateTo("gallery")}
+          >
+            Gallery
+          </button>
+          <button
+            type="button"
             className={currentPage === "cart" ? "nav-link active" : "nav-link"}
             onClick={() => navigateTo("cart")}
           >
@@ -1432,6 +1564,7 @@ function App() {
       {currentPage === "home" && renderHomePage()}
       {currentPage === "cart" && renderCartPage()}
       {currentPage === "admin" && renderAdminPage()}
+      {currentPage === "gallery" && renderGalleryPage()}
 
       {imageViewerProduct && (
         <div
@@ -1464,7 +1597,10 @@ function App() {
               </button>
             </div>
 
-            <div className="image-viewer-toolbar" aria-label="Image zoom controls">
+            <div
+              className="image-viewer-toolbar"
+              aria-label="Image zoom controls"
+            >
               <button
                 type="button"
                 onClick={() => updateImageZoom(imageZoom - 0.25)}
@@ -1535,7 +1671,9 @@ function App() {
               event.preventDefault();
 
               if (!ratingModalValue) {
-                setRatingMessage("Please select a star rating before submitting.");
+                setRatingMessage(
+                  "Please select a star rating before submitting.",
+                );
                 return;
               }
 
@@ -1545,7 +1683,9 @@ function App() {
               }
 
               if (!ratingModalFeedback.trim()) {
-                setRatingMessage("Please write a short message before submitting.");
+                setRatingMessage(
+                  "Please write a short message before submitting.",
+                );
                 return;
               }
 
